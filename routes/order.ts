@@ -69,9 +69,17 @@ export function placeOrder () {
             if (BasketItem != null) {
               challengeUtils.solveIf(challenges.christmasSpecialChallenge, () => { return BasketItem.ProductId === products.christmasSpecial.id })
               try {
+                if (!(BasketItem.quantity > 0)) {
+                  res.status(400).json({ error: res.__('Quantity must be greater than zero.') })
+                  return
+                }
                 const quantityRow = await QuantityModel.findOne({ where: { ProductId: BasketItem.ProductId } })
                 if (quantityRow) {
                   const newQuantity = quantityRow.quantity - BasketItem.quantity
+                  if (newQuantity < 0) {
+                    res.status(400).json({ error: res.__('We are out of stock! Sorry for the inconvenience.') })
+                    return
+                  }
                   await QuantityModel.update({ quantity: newQuantity }, { where: { ProductId: BasketItem.ProductId } })
                 }
               } catch (error: unknown) {
