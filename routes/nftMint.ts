@@ -1,12 +1,15 @@
 import { type Request, type Response } from 'express'
-import { WebSocketProvider, Contract } from 'ethers'
+import { WebSocketProvider, Contract, verifyMessage } from 'ethers'
 
 import * as challengeUtils from '../lib/challengeUtils'
 import { nftABI } from '../data/static/contractABIs'
 import { challenges } from '../data/datacache'
+import * as security from '../lib/insecurity'
 import * as utils from '../lib/utils'
 
 const nftAddress = '0x41427790c94E7a592B17ad694eD9c06A02bb9C39'
+// Message the caller must sign with their wallet's private key to prove ownership of the supplied address.
+const ownershipChallengeMessage = 'I confirm ownership of this wallet for the OWASP Juice Shop NFT mint challenge.'
 const addressesMinted = new Set()
 let isEventListenerCreated = false
 
@@ -33,7 +36,33 @@ export function nftMintListener () {
 export function walletNFTVerify () {
   return (req: Request, res: Response) => {
     try {
+      // Tie the challenge award to a logged-in user account instead of a stateless POST.
+      const loggedInUser = security.authenticatedUsers.from(req)
+      if (!loggedInUser) {
+        res.status(401).json({ success: false, message: 'Authentication required' })
+        return
+      }
+
       const metamaskAddress = req.body.walletAddress
+      const signature = req.body.signature
+      if (!metamaskAddress || !signature) {
+        res.status(400).json({ success: false, message: 'Wallet address and ownership signature are required' })
+        return
+      }
+
+      // Require proof of control of the private key via EIP-191 personal_sign before trusting the address.
+      let recoveredAddress
+      try {
+        recoveredAddress = verifyMessage(ownershipChallengeMessage, signature)
+      } catch {
+        res.status(401).json({ success: false, message: 'Invalid wallet ownership signature' })
+        return
+      }
+      if (recoveredAddress.toLowerCase() !== metamaskAddress.toLowerCase()) {
+        res.status(401).json({ success: false, message: 'Invalid wallet ownership signature' })
+        return
+      }
+
       if (addressesMinted.has(metamaskAddress)) {
         addressesMinted.delete(metamaskAddress)
         challengeUtils.solveIf(challenges.nftMintChallenge, () => true)
