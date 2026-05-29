@@ -1,5 +1,5 @@
 import { type Request, type Response } from 'express'
-import { WebSocketProvider, Contract } from 'ethers'
+import { WebSocketProvider, Contract, verifyMessage } from 'ethers'
 
 import * as challengeUtils from '../lib/challengeUtils'
 import { nftABI } from '../data/static/contractABIs'
@@ -34,6 +34,26 @@ export function walletNFTVerify () {
   return (req: Request, res: Response) => {
     try {
       const metamaskAddress = req.body.walletAddress
+      const message = req.body.message
+      const signature = req.body.signature
+      if (!metamaskAddress || !message || !signature) {
+        res.status(400).json({ success: false, message: 'walletAddress, message and signature are required' })
+        return
+      }
+      // Require proof that the caller controls the claimed wallet by verifying a
+      // signature over the provided message. Without this, the public minter
+      // address from on-chain NFTMinted events could be replayed by anyone.
+      let recoveredAddress: string
+      try {
+        recoveredAddress = verifyMessage(message, signature)
+      } catch {
+        res.status(401).json({ success: false, message: 'Invalid wallet signature' })
+        return
+      }
+      if (recoveredAddress.toLowerCase() !== String(metamaskAddress).toLowerCase()) {
+        res.status(401).json({ success: false, message: 'Wallet signature does not match the provided address' })
+        return
+      }
       if (addressesMinted.has(metamaskAddress)) {
         addressesMinted.delete(metamaskAddress)
         challengeUtils.solveIf(challenges.nftMintChallenge, () => true)
