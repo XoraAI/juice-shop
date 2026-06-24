@@ -1,0 +1,20 @@
+name: notify-xora-on-merge
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch juice-shop-push to xora
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.XORA_DISPATCH_TOKEN }}
+          repository: Ranchman42/xora
+          event-type: juice-shop-push
+          client-payload: '{"ref": "${{ github.sha }}"}'
