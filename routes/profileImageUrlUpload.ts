@@ -3,7 +3,9 @@
  * SPDX-License-Identifier: MIT
  */
 
+import dns from 'node:dns'
 import fs from 'node:fs'
+import net from 'node:net'
 import { Readable } from 'node:stream'
 import { finished } from 'node:stream/promises'
 import { type Request, type Response, type NextFunction } from 'express'
@@ -13,6 +15,18 @@ import { UserModel } from '../models/user'
 import * as utils from '../lib/utils'
 import logger from '../lib/logger'
 
+function isPrivateIp (ip: string): boolean {
+  if (net.isIPv4(ip)) {
+    const [a, b] = ip.split('.').map(Number)
+    return a === 127 || a === 10 || a === 0 ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 169 && b === 254)
+  }
+  const norm = ip.toLowerCase()
+  return norm === '::1' || norm.startsWith('fe80') || norm.startsWith('fc') || norm.startsWith('fd')
+}
+
 export function profileImageUrlUpload () {
   return async (req: Request, res: Response, next: NextFunction) => {
     if (req.body.imageUrl !== undefined) {
@@ -21,6 +35,14 @@ export function profileImageUrlUpload () {
       const loggedInUser = security.authenticatedUsers.get(req.cookies.token)
       if (loggedInUser) {
         try {
+          const parsedUrl = new URL(url)
+          if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+            throw new Error('URL scheme must be http or https')
+          }
+          const { address } = await dns.promises.lookup(parsedUrl.hostname)
+          if (isPrivateIp(address)) {
+            throw new Error('URL resolves to a private or reserved IP address')
+          }
           const response = await fetch(url)
           if (!response.ok || !response.body) {
             throw new Error('url returned a non-OK status code or an empty body')
