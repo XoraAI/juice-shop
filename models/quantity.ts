@@ -36,7 +36,7 @@ const QuantityModelInit = (sequelize: Sequelize) => {
         autoIncrement: true
       },
       quantity: {
-        type: DataTypes.INTEGER,
+        type: 'INTEGER CHECK (quantity >= 0)',
         validate: {
           isInt: true
         }
