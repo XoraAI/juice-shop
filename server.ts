@@ -596,7 +596,7 @@ restoreOverwrittenFilesWithOriginals().then(() => {
   app.post('/rest/user/reset-password', resetPassword())
   app.get('/rest/user/security-question', securityQuestion())
   app.get('/rest/user/whoami', security.updateAuthenticatedUsers(), retrieveLoggedInUser())
-  app.get('/rest/user/authentication-details', security.isAdmin(), authenticatedUsers())
+  app.get('/rest/user/authentication-details', authenticatedUsers())
   app.get('/rest/products/search', searchProducts())
   app.get('/rest/basket/:id', retrieveBasket())
   app.post('/rest/basket/:id/checkout', placeOrder())
