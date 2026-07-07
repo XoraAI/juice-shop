@@ -4,6 +4,7 @@
  */
 import express, { type NextFunction, type Request, type Response } from 'express'
 import path from 'node:path'
+import { randomBytes } from 'node:crypto'
 
 import { SecurityQuestionModel } from '../models/securityQuestion'
 import { PrivacyRequestModel } from '../models/privacyRequests'
@@ -14,6 +15,7 @@ import * as security from '../lib/insecurity'
 import { UserModel } from '../models/user'
 
 const router = express.Router()
+const csrfTokens = new Map<string, string>()
 
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   const loggedInUser = security.authenticatedUsers.get(req.cookies.token)
@@ -38,7 +40,9 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       throw new Error('No question found!')
     }
 
-    res.render('dataErasureForm', { userEmail: email, securityQuestion: question.question })
+    const csrfToken = randomBytes(20).toString('hex')
+    csrfTokens.set(req.cookies.token, csrfToken)
+    res.render('dataErasureForm', { userEmail: email, securityQuestion: question.question, csrfToken })
   } catch (error) {
     next(error)
   }
@@ -48,6 +52,7 @@ interface DataErasureRequestParams {
   layout?: string
   email: string
   securityAnswer: string
+  _csrf: string
 }
 
 // eslint-disable-next-line @typescript-eslint/no-misused-promises
@@ -57,6 +62,13 @@ router.post('/', async (req: Request<Record<string, unknown>, Record<string, unk
     next(new Error('Blocked illegal activity by ' + req.socket.remoteAddress))
     return
   }
+
+  const expectedCsrfToken = csrfTokens.get(req.cookies.token)
+  if (!expectedCsrfToken || expectedCsrfToken !== req.body._csrf) {
+    res.status(403).send('Invalid or missing CSRF token')
+    return
+  }
+  csrfTokens.delete(req.cookies.token)
 
   try {
     await PrivacyRequestModel.create({
