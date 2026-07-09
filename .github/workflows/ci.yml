@@ -21,6 +21,9 @@ env:
   NODE_DEFAULT_VERSION: 22
   NODE_OPTIONS: "--max_old_space_size=4096"
   CYCLONEDX_NPM_VERSION: '^2.0.0||^3.0.0||^4.0.0'   # keep in sync with package.json
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -31,6 +34,18 @@ jobs:
         uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af #v4.1.0
         with:
           node-version: ${{ env.NODE_DEFAULT_VERSION }}
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ubuntu-latest-node22-${{ hashFiles('package.json') }}
+          restore-keys: ubuntu-latest-node22-
+      - name: Cache frontend node modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: ubuntu-latest-frontend-node22-${{ hashFiles('frontend/package.json') }}
+          restore-keys: ubuntu-latest-frontend-node22-
       - name: "Install application minimalistically"
         run: |
           npm install --ignore-scripts
@@ -53,7 +68,7 @@ jobs:
           npm run lint:config -- -f ./config/tutorial.yml &&
           npm run lint:config -- -f ./config/unsafe.yml
   coding-challenge-rsn:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
       - name: "Check out Git repository"
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
@@ -61,6 +76,12 @@ jobs:
         uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af #v4.1.0
         with:
           node-version: ${{ env.NODE_DEFAULT_VERSION }}
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ubuntu-latest-node22-${{ hashFiles('package.json') }}
+          restore-keys: ubuntu-latest-node22-
       - name: "Install application"
         run: npm install
       - name: "Check coding challenges for accidental code discrepancies"
@@ -80,6 +101,20 @@ jobs:
         uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af #v4.1.0
         with:
           node-version: ${{ matrix.node-version }}
+      - name: Cache node modules
+        if: github.repository == 'juice-shop/juice-shop' || (github.repository != 'juice-shop/juice-shop' && matrix.os == 'ubuntu-latest' && matrix.node-version == '22')
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ matrix.os }}-node${{ matrix.node-version }}-${{ hashFiles('package.json') }}
+          restore-keys: ${{ matrix.os }}-node${{ matrix.node-version }}-
+      - name: Cache frontend node modules
+        if: github.repository == 'juice-shop/juice-shop' || (github.repository != 'juice-shop/juice-shop' && matrix.os == 'ubuntu-latest' && matrix.node-version == '22')
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: ${{ matrix.os }}-frontend-node${{ matrix.node-version }}-${{ hashFiles('frontend/package.json') }}
+          restore-keys: ${{ matrix.os }}-frontend-node${{ matrix.node-version }}-
       - name: "Install application"
         if: github.repository == 'juice-shop/juice-shop' || (github.repository != 'juice-shop/juice-shop' && matrix.os == 'ubuntu-latest' && matrix.node-version == '22')
         run: npm install
@@ -120,6 +155,13 @@ jobs:
         uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af #v4.1.0
         with:
           node-version: ${{ matrix.node-version }}
+      - name: Cache node modules
+        if: github.repository == 'juice-shop/juice-shop' || (github.repository != 'juice-shop/juice-shop' && matrix.os == 'ubuntu-latest' && matrix.node-version == '22')
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ matrix.os }}-node${{ matrix.node-version }}-${{ hashFiles('package.json') }}
+          restore-keys: ${{ matrix.os }}-node${{ matrix.node-version }}-
       - name: "Install application"
         if: github.repository == 'juice-shop/juice-shop' || (github.repository != 'juice-shop/juice-shop' && matrix.os == 'ubuntu-latest' && matrix.node-version == '22')
         run: npm install
@@ -164,6 +206,9 @@ jobs:
           files: frontend-lcov.info server-lcov.info api-lcov.info
   custom-config-test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        config: [7ms, addo, bodgeit, ctf, fbctf, juicebox, mozilla, oss, quiet, tutorial, unsafe]
     steps:
       - name: "Check out Git repository"
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
@@ -171,31 +216,24 @@ jobs:
         uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af #v4.1.0
         with:
           node-version: ${{ env.NODE_DEFAULT_VERSION }}
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ubuntu-latest-node22-${{ hashFiles('package.json') }}
+          restore-keys: ubuntu-latest-node22-
       - name: "Install application"
-        if: github.repository == 'juice-shop/juice-shop' || (github.repository != 'juice-shop/juice-shop' && matrix.os == 'ubuntu-latest' && matrix.node-version == '22')
         run: npm install
-      - name: "Execute server tests for each custom configuration"
+      - name: "Execute server tests for ${{ matrix.config }} configuration"
         uses: nick-invision/retry@7152eba30c6575329ac0576536151aca5a72780e #v3.0.0
         with:
-          timeout_minutes: 30
+          timeout_minutes: 5
           max_attempts: 3
-          command: >
-            NODE_ENV=7ms npm run test:server &&
-            NODE_ENV=addo npm run test:server &&
-            NODE_ENV=bodgeit npm run test:server &&
-            NODE_ENV=ctf npm run test:server &&
-            NODE_ENV=fbctf npm run test:server &&
-            NODE_ENV=juicebox npm run test:server &&
-            NODE_ENV=mozilla npm run test:server &&
-            NODE_ENV=oss npm run test:server &&
-            NODE_ENV=quiet npm run test:server &&
-            NODE_ENV=tutorial npm run test:server &&
-            NODE_ENV=unsafe npm run test:server
+          command: NODE_ENV=${{ matrix.config }} npm run test:server
   e2e:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
         browser: [chrome] # FIXME Switch back to [chrome, firefox] after debugging extreme flakiness of Firefox on CI/CD
       fail-fast: false
     steps:
@@ -205,12 +243,23 @@ jobs:
         uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af #v4.1.0
         with:
           node-version: ${{ env.NODE_DEFAULT_VERSION }}
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ubuntu-latest-node22-${{ hashFiles('package.json') }}
+          restore-keys: ubuntu-latest-node22-
+      - name: Cache frontend node modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: ubuntu-latest-frontend-node22-${{ hashFiles('frontend/package.json') }}
+          restore-keys: ubuntu-latest-frontend-node22-
       - name: "Install CLI tools"
         run: npm install -g @angular/cli
       - name: "Install application"
         run: npm install
-      - name: "Execute end-to-end tests on Ubuntu"
-        if: ${{ matrix.os == 'ubuntu-latest' }}
+      - name: "Execute end-to-end tests"
         uses: cypress-io/github-action@57b70560982e6a11d23d4b8bec7f8a487cdbb71b #v6.7.8
         with:
           install: false
@@ -218,23 +267,9 @@ jobs:
           start: npm start
           wait-on: http://localhost:3000
           record: true
-          group: ${{ matrix.browser }} @ ${{ matrix.os }}
+          group: ${{ matrix.browser }} @ ubuntu-latest
         env:
           SOLUTIONS_WEBHOOK: ${{ secrets.E2E_SOLUTIONS_WEBHOOK }}
-          CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: "Execute end-to-end tests on Mac"
-        if: ${{ matrix.os == 'macos-latest' }}
-        uses: cypress-io/github-action@57b70560982e6a11d23d4b8bec7f8a487cdbb71b #v6.7.8
-        with:
-          install: false
-          browser: ${{ matrix.browser }}
-          start: npm start
-          wait-on: http://localhost:3000
-          record: true
-          group: ${{ matrix.browser }} @ ${{ matrix.os }}
-        env:
-          CYPRESS_CACHE_FOLDER: /Users/runner/Library/Caches/Cypress
           CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   smoke-test:
@@ -255,6 +290,12 @@ jobs:
           echo "PCKG_OS_NAME=linux" >> $GITHUB_ENV
           echo "PCKG_NODE_VERSION=18" >> $GITHUB_ENV
           echo "PCKG_CPU_ARCH=x64" >> $GITHUB_ENV
+      - name: Cache node modules (production)
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ubuntu-latest-node22-prod-${{ hashFiles('package.json') }}
+          restore-keys: ubuntu-latest-node22-prod-
       - name: "Package application"
         run: |
           npm install --production
@@ -301,7 +342,7 @@ jobs:
           echo "DOCKER_TAG=snapshot" >> $GITHUB_ENV
           fi
           echo "VCS_REF=`git rev-parse --short HEAD`" >> $GITHUB_ENV
-          echo "BUILD_DATE=`date -u +”%Y-%m-%dT%H:%M:%SZ”`" >> $GITHUB_ENV
+          echo "BUILD_DATE=`date -u +"%Y-%m-%dT%H:%M:%SZ"`" >> $GITHUB_ENV
       - name: "Build and push for AMD64 and ARM64 processors"
         uses: docker/build-push-action@48aba3b46d1b1fec4febb7c5d0c644b249a11355 #v6.1.0
         with:
